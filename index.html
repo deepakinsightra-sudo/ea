@@ -158,11 +158,11 @@ const S={tasks:[],jobs:[],focus:[],notes:''};
 let db=null,view=location.hash.slice(1)||'today',tf={cat:'All',mode:'list',q:''};
 
 /* ---------- secure storage: Supabase Auth + row-level security ---------- */
-const SUPABASE_URL='https://xpxetldhvwmzyjnennht.supabase.co/rest/v1/';
+const SUPABASE_URL='https://xpxetldhvwmzyjnennht.supabase.co';
 const SUPABASE_KEY='sb_publishable_dBdb8Y-HukEmeNc8s9SOtQ_4UZqs2n8';
 const cache=()=>{};
 let sb=null,uidU=null;
-const cfgOk=()=>!/PASTE_/.test(SUPABASE_URL+SUPABASE_KEY);
+const cfgOk=()=>!/PASTE_/.test('https://xpxetldhvwmzyjnennht.supabase.co'+'sb_publishable_dBdb8Y-HukEmeNc8s9SOtQ_4UZqs2n8');
 const T_='da_items';
 function fail(m){return r=>{if(r&&r.error)toast(m+': '+r.error.message)}}
 function put(col,o){if(!sb||!uidU)return;sb.from(T_).upsert({user_id:uidU,col,id:o.id,data:o,updated_at:new Date().toISOString()},{onConflict:'user_id,col,id'}).then(fail('Save failed'))}
