@@ -158,7 +158,7 @@ const S={tasks:[],jobs:[],focus:[],notes:''};
 let db=null,view=location.hash.slice(1)||'today',tf={cat:'All',mode:'list',q:''};
 
 /* ---------- secure storage: Supabase Auth + row-level security ---------- */
-const SUPABASE_URL='https://xpxetldhvwmzyjnennht.supabase.co';
+const SUPABASE_URL='https://xpxetldhvwmzyjnennht.supabase.co/rest/v1/';
 const SUPABASE_KEY='sb_publishable_dBdb8Y-HukEmeNc8s9SOtQ_4UZqs2n8';
 const cache=()=>{};
 let sb=null,uidU=null;
