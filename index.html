@@ -2,6 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Deepak Jagalur Personal Assistant</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -107,9 +108,16 @@ textarea.notes{min-height:150px;resize:vertical;line-height:1.5}
  .side-foot{margin:0 0 0 auto;padding:0 10px}.side-foot .hint{display:none}
  main{margin:0 auto;width:100%;max-width:1200px;padding:22px 0 60px}
 }
+
+body.locked aside,body.locked main{display:none}
+#gate{display:none;position:fixed;inset:0;z-index:200;place-items:center;padding:20px;background:radial-gradient(700px 420px at 90% -5%,rgba(139,124,255,.25),transparent 60%),radial-gradient(600px 400px at 0% 100%,rgba(111,227,224,.12),transparent 60%),var(--bg)}
+body.locked #gate{display:grid}
+.gcard{width:min(400px,100%);padding:30px 28px}.gcard h2{font-size:28px;margin:14px 0 4px}.gcard p{color:var(--mute);margin-bottom:20px;font-size:14px}
+.gcard .logo{padding:0}.gcard .btn{width:100%;padding:13px}#gerr{min-height:20px;font-size:13px;margin-bottom:10px}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body>
+<body class="locked">
 <aside id="side">
   <div class="logo"><b>V</b><span>Deepak Jagalur<small>Personal Assistant</small></span><button class="rbtn" id="rail" title="Collapse sidebar">‹</button></div>
   <div id="nav"></div>
@@ -122,9 +130,15 @@ textarea.notes{min-height:150px;resize:vertical;line-height:1.5}
     <button class="btn brass" data-new="task">＋ Add task</button><button class="btn" data-new="job">Add job</button>
     <button class="icon-btn" id="theme" title="Toggle theme">◐</button>
     <div class="me"><b>D</b><div>Deepak Jagalur<small>Vachana Investments</small></div></div>
+    <button class="btn" id="logout">Log out</button>
   </div>
   <div id="view"></div>
 </main>
+<div id="gate"><form class="card gcard" id="loginf"><div class="logo"><b>D</b><span>Deepak Jagalur<small>Personal Assistant</small></span></div>
+<h2>Welcome back</h2><p>Private workspace. Sign in to continue.</p>
+<div class="f"><label>Email</label><input type="email" name="email" autocomplete="username" required></div>
+<div class="f"><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
+<div id="gerr" class="late"></div><button class="btn brass" type="submit">Log in</button></form></div>
 <div id="modal"></div>
 
 <script>
@@ -143,32 +157,53 @@ const PRI={high:3,med:2,low:1};
 const S={tasks:[],jobs:[],focus:[],notes:''};
 let db=null,view=location.hash.slice(1)||'today',tf={cat:'All',mode:'list',q:''};
 
-/* ---------- persistence: local cache + optional db sync ---------- */
-const LK='deepak-desk-v1';
-try{const c=JSON.parse(localStorage.getItem(LK)||'null');if(c)Object.assign(S,c)}catch(e){}
-const cache=()=>{try{localStorage.setItem(LK,JSON.stringify(S))}catch(e){}};
-const rowsOf=snap=>{try{const docs=snap.docs||snap;return Array.from(docs).map(d=>typeof d.data==='function'?d.data():(d.data||d)).filter(r=>r&&r.id)}catch(e){return[]}};
-function put(col,o){cache();if(db)try{Promise.resolve(db.doc(col+'/'+o.id).set(o)).catch(()=>{})}catch(e){}}
-function drop(col,id){cache();if(db)try{Promise.resolve(db.doc(col+'/'+id).delete()).catch(()=>{})}catch(e){}}
-function putNotes(){cache();if(db)try{Promise.resolve(db.doc('meta/notes').set({id:'notes',text:S.notes})).catch(()=>{})}catch(e){}}
-function sub(col){
-  let first=true;
-  try{db.collection(col).onSnapshot(snap=>{
-    const rows=rowsOf(snap);
-    if(first&&!rows.length&&S[col].length){S[col].forEach(o=>put(col,o))}
-    else{S[col]=rows}
-    first=false;cache();if(!document.querySelector('.sheet')&&!dragging)render()},()=>{})}catch(e){}
+/* ---------- secure storage: Supabase Auth + row-level security ---------- */
+const SUPABASE_URL='https://xpxetldhvwmzyjnennht.supabase.co';
+const SUPABASE_KEY='sb_publishable_dBdb8Y-HukEmeNc8s9SOtQ_4UZqs2n8';
+const cache=()=>{};
+let sb=null,uidU=null;
+const cfgOk=()=>!/PASTE_/.test(SUPABASE_URL+SUPABASE_KEY);
+const T_='da_items';
+function fail(m){return r=>{if(r&&r.error)toast(m+': '+r.error.message)}}
+function put(col,o){if(!sb||!uidU)return;sb.from(T_).upsert({user_id:uidU,col,id:o.id,data:o,updated_at:new Date().toISOString()},{onConflict:'user_id,col,id'}).then(fail('Save failed'))}
+function drop(col,id){if(!sb||!uidU)return;sb.from(T_).delete().eq('col',col).eq('id',id).then(fail('Delete failed'))}
+function putNotes(){if(!sb||!uidU)return;sb.from(T_).upsert({user_id:uidU,col:'meta',id:'notes',data:{id:'notes',text:S.notes},updated_at:new Date().toISOString()},{onConflict:'user_id,col,id'}).then(fail('Save failed'))}
+async function loadAll(){
+  const r=await sb.from(T_).select('col,data');
+  if(r.error){toast('Load failed: '+r.error.message);return}
+  S.tasks=[];S.jobs=[];S.focus=[];S.notes='';
+  r.data.forEach(x=>{if(x.col==='meta'){if(x.data&&x.data.id==='notes')S.notes=x.data.text||''}else if(Array.isArray(S[x.col]))S[x.col].push(x.data)});
+}
+let poll=null;
+async function enter(session){
+  uidU=session.user.id;
+  await loadAll();
+  document.body.classList.remove('locked');
+  const el=$('#sync');el.classList.add('on');el.querySelector('span').textContent='Secure cloud · synced';
+  render();
+  clearInterval(poll);poll=setInterval(async()=>{if(document.hidden||dragging||document.querySelector('.sheet')||document.activeElement?.id==='notes')return;await loadAll();render()},60000);
+}
+function lock(msg){
+  uidU=null;S.tasks=[];S.jobs=[];S.focus=[];S.notes='';clearInterval(poll);clearInterval(T.iv);T.run=false;
+  document.body.classList.add('locked');$('#modal').innerHTML='';$('#view').innerHTML='';
+  $('#gerr').textContent=msg||'';
 }
 (async()=>{
-  try{
-    if(!window.claude)return;
-    db=await window.claude.use('db');
-    if(!db)return;
-    ['tasks','jobs','focus'].forEach(sub);
-    try{db.doc('meta/notes').onSnapshot(s=>{const d=typeof s.data==='function'?s.data():s;if(d&&typeof d.text==='string'&&d.text!==S.notes){S.notes=d.text;cache();const n=$('#notes');if(n&&document.activeElement!==n)n.value=S.notes}})}catch(e){}
-    const el=$('#sync');el.classList.add('on');el.querySelector('span').textContent='Synced · saved online';
-  }catch(e){}
+  if(!cfgOk()||!window.supabase){$('#gerr').textContent='Setup needed: add your Supabase URL and anon key in index.html.';return}
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  const {data}=await sb.auth.getSession();
+  if(data&&data.session)await enter(data.session);
+  sb.auth.onAuthStateChange(ev=>{if(ev==='SIGNED_OUT')lock()});
 })();
+$('#loginf').addEventListener('submit',async e=>{
+  e.preventDefault();if(!sb)return;
+  const f=new FormData(e.target),btn=e.target.querySelector('button');btn.disabled=true;btn.textContent='Signing in…';$('#gerr').textContent='';
+  const {data,error}=await sb.auth.signInWithPassword({email:f.get('email').trim(),password:f.get('password')});
+  btn.disabled=false;btn.textContent='Log in';
+  if(error){$('#gerr').textContent='Incorrect email or password.';return}
+  e.target.reset();await enter(data.session);
+});
+$('#logout').onclick=async()=>{if(sb)await sb.auth.signOut();lock('You have been logged out.')};
 
 /* ---------- helpers ---------- */
 const openTasks=()=>S.tasks.filter(t=>t.status!=='done');
